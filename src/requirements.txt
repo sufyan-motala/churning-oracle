@@ -1,0 +1,11 @@
+fastapi
+pydantic
+uvicorn
+langchain
+langchain-openai
+requests
+praw
+python-dotenv
+chromadb
+pydantic-settings
+openai
