@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Churning Canada Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+      <h1 class="text-3xl font-bold mb-8 text-center">
+        Churning Canada Assistant
+      </h1>
+
+      <!-- Data Status Card -->
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Data Coverage</h2>
+        <div id="statusContainer" class="grid grid-cols-2 gap-4">
+          <div>
+            <p class="text-gray-600">Total Documents:</p>
+            <p id="totalDocs" class="text-2xl font-bold">Loading...</p>
+          </div>
+          <div>
+            <p class="text-gray-600">Date Range (days):</p>
+            <p id="dateRange" class="text-2xl font-bold">Loading...</p>
+          </div>
+          <div>
+            <p class="text-gray-600">Oldest Date:</p>
+            <p id="oldestDate" class="text-sm">Loading...</p>
+          </div>
+          <div>
+            <p class="text-gray-600">Newest Date:</p>
+            <p id="newestDate" class="text-sm">Loading...</p>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 class="text-xl font-semibold mb-4">LLM Configuration</h2>
+          <div id="llmConfig" class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-gray-600">Current Backend:</p>
+              <p id="currentBackend" class="text-lg font-bold">Loading...</p>
+            </div>
+            <div>
+              <p class="text-gray-600">Model Name:</p>
+              <p id="modelName" class="text-lg font-bold">Loading...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fetch More Data -->
+        <div class="mt-4 pt-4 border-t">
+          <div class="flex gap-4">
+            <input
+              type="number"
+              id="fetchDays"
+              min="1"
+              value="1"
+              class="w-24 p-2 border rounded"
+            />
+            <button
+              onclick="fetchMoreData()"
+              class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 transition-colors flex-grow"
+            >
+              Fetch More Data
+            </button>
+          </div>
+          <p id="fetchStatus" class="mt-2 text-sm text-gray-600 hidden"></p>
+
+          <!-- Add Reset Button -->
+          <div class="mt-4">
+            <button
+              onclick="resetData()"
+              class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600 transition-colors w-full"
+              id="resetButton"
+            >
+              Reset Data
+            </button>
+            <p id="resetStatus" class="mt-2 text-sm text-gray-600 hidden"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Question Input Card -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <textarea
+          id="question"
+          class="w-full p-4 border rounded-lg mb-4 h-32"
+          placeholder="Ask a question about credit card churning in Canada..."
+        ></textarea>
+
+        <button
+          onclick="askQuestion()"
+          class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
+        >
+          Ask Question
+        </button>
+
+        <div id="response" class="mt-6 p-4 bg-gray-50 rounded-lg hidden">
+          <h2 class="font-semibold mb-2">Response:</h2>
+          <p id="responseText"></p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Fetch and update status
+      async function updateStatus() {
+        try {
+          const response = await fetch("/status");
+          const data = await response.json();
+
+          document.getElementById("totalDocs").textContent =
+            data.total_documents;
+          document.getElementById("dateRange").textContent =
+            data.date_range || "N/A";
+          document.getElementById("oldestDate").textContent =
+            data.oldest_date || "N/A";
+          document.getElementById("newestDate").textContent =
+            data.newest_date || "N/A";
+        } catch (error) {
+          console.error("Error fetching status:", error);
+        }
+      }
+
+      // Add function to get API key from URL parameter or localStorage
+      function getApiKey() {
+        // First check URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        let apiKey = urlParams.get('apiKey');
+        
+        // If not in URL, check localStorage
+        if (!apiKey) {
+          apiKey = localStorage.getItem('apiKey');
+        } else {
+          // Save to localStorage for future use
+          localStorage.setItem('apiKey', apiKey);
+        }
+        
+        return apiKey;
+      }
+
+      // Update fetch function to include API key
+      async function fetchMoreData() {
+        const days = document.getElementById("fetchDays").value;
+        const statusElement = document.getElementById("fetchStatus");
+        const apiKey = getApiKey();
+
+        statusElement.textContent = "Fetching data...";
+        statusElement.classList.remove("hidden");
+
+        try {
+          const response = await fetch("/fetch", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey
+            },
+            body: JSON.stringify({ days: parseInt(days) }),
+          });
+
+          if (response.status === 403) {
+            statusElement.textContent = "Error: Invalid API key";
+            return;
+          }
+
+          const data = await response.json();
+          statusElement.textContent = data.message;
+
+          await updateStatus();
+        } catch (error) {
+          statusElement.textContent = "Error fetching data";
+        }
+      }
+
+      // Update ask function to include API key
+      async function askQuestion() {
+        const question = document.getElementById("question").value;
+        const responseDiv = document.getElementById("response");
+        const responseText = document.getElementById("responseText");
+        const apiKey = getApiKey();
+
+        try {
+          const response = await fetch("/ask", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey
+            },
+            body: JSON.stringify({ text: question }),
+          });
+
+          if (response.status === 403) {
+            responseDiv.classList.remove("hidden");
+            responseText.textContent = "Error: Invalid API key";
+            return;
+          }
+
+          const data = await response.json();
+          responseDiv.classList.remove("hidden");
+          responseText.textContent = data.response;
+        } catch (error) {
+          responseDiv.classList.remove("hidden");
+          responseText.textContent = "Error: Unable to get response";
+        }
+      }
+
+      async function updateConfig() {
+        try {
+          const response = await fetch("/config");
+          const data = await response.json();
+
+          document.getElementById("currentBackend").textContent =
+            data.llm_backend;
+          document.getElementById("modelName").textContent = data.model_name;
+        } catch (error) {
+          console.error("Error fetching config:", error);
+        }
+      }
+
+      // Call updateConfig with status update
+      async function updateAll() {
+        await Promise.all([updateStatus(), updateConfig()]);
+      }
+
+      // Update both status and config initially and every 60 seconds
+      updateAll();
+      setInterval(updateAll, 60000);
+
+      async function resetData() {
+        if (!confirm('Are you sure you want to delete all data? This cannot be undone.')) {
+          return;
+        }
+
+        const statusElement = document.getElementById("resetStatus");
+        const apiKey = getApiKey();
+
+        statusElement.textContent = "Resetting data...";
+        statusElement.classList.remove("hidden");
+
+        try {
+          const response = await fetch("/reset", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey
+            }
+          });
+
+          if (response.status === 403) {
+            statusElement.textContent = "Error: Invalid API key";
+            return;
+          }
+
+          const data = await response.json();
+          statusElement.textContent = data.message;
+
+          // Update the status display
+          await updateStatus();
+        } catch (error) {
+          statusElement.textContent = "Error resetting data";
+        }
+      }
+    </script>
+  </body>
+</html>
