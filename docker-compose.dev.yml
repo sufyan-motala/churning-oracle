@@ -1,0 +1,69 @@
+x-common-app-config: &common-app-config
+  build: .
+  ports:
+    - "3000:3000"
+  volumes:
+    - ./src/app:/app/app
+    - ./src/frontend:/app/frontend
+    - ./.env:/app/.env
+  environment: &common-env
+    CHROMA_SERVER_HOST: chroma # Only need this since it's specific to Docker networking
+    LLM_BACKEND: ${LLM_BACKEND:-openai}
+
+services:
+  churning-oracle-openai:
+    <<: *common-app-config
+    profiles: [ "openai" ]
+    environment: *common-env
+    depends_on:
+      chroma:
+        condition: service_healthy
+
+  churning-oracle-ollama:
+    <<: *common-app-config
+    profiles: [ "ollama" ]
+    environment:
+      <<: *common-env
+      OLLAMA_HOST: http://ollama:11434
+      MODEL_NAME: ${MODEL_NAME:-mistral}
+    depends_on:
+      chroma:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+  chroma:
+    build:
+      context: .
+      dockerfile: chroma.Dockerfile
+    volumes:
+      - chroma_data:/chroma/db
+    ports:
+      - "8000:8000"
+    environment:
+      - ALLOW_RESET=true
+      - ANONYMIZED_TELEMETRY=false
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat" ]
+      interval: 30s
+      timeout: 60s
+      retries: 10
+
+  ollama:
+    profiles: [ "ollama" ]
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+
+volumes:
+  chroma_data:
+  ollama_data:
